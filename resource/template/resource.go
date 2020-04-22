@@ -17,7 +17,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/kelseyhightower/confd/backends"
 	"github.com/kelseyhightower/confd/log"
-	util "github.com/kelseyhightower/confd/util"
+	"github.com/kelseyhightower/confd/util"
 	"github.com/kelseyhightower/memkv"
 	"github.com/xordataexchange/crypt/encoding/secconf"
 )
@@ -29,7 +29,7 @@ type Config struct {
 	Noop          bool   `toml:"noop"`
 	Prefix        string `toml:"prefix"`
 	StoreClient   backends.StoreClient
-	SyncOnly      bool `toml:"sync-only"`
+	SyncOnly      bool   `toml:"sync-only"`
 	TemplateDir   string
 	PGPPrivateKey []byte
 }
@@ -49,6 +49,8 @@ type TemplateResource struct {
 	Mode          string
 	Prefix        string
 	ReloadCmd     string `toml:"reload_cmd"`
+	Shards        int    `toml:"shards"`
+	Num           int    `toml:"num"`
 	Src           string
 	StageFile     *os.File
 	Uid           int
@@ -182,10 +184,22 @@ func (t *TemplateResource) setVars() error {
 		return err
 	}
 	log.Debug("Got the following map from store: %v", result)
-
+        if len(result)<=0 {
+            return errors.New("empty result from kv")
+        }
 	t.store.Purge()
-
+	log.Info("t.shards:%+v,t.nums:%+v", t.Shards, t.Num)
 	for k, v := range result {
+		if t.Shards+t.Num > 0 {
+			s := strings.Split(k, "/")
+			numS := s[len(s)-1]
+			index, _ := strconv.ParseInt(numS, 10, 32)
+			if int(index)%t.Shards != t.Num {
+				continue
+			}
+
+		}
+		log.Debug("t.shards:%+v,t.nums:%+v,get key:%+v,value:%+v", t.Shards, t.Num, k, v)
 		t.store.Set(path.Join("/", strings.TrimPrefix(k, t.Prefix)), v)
 	}
 	return nil
